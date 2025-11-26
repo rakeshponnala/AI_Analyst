@@ -1,4 +1,6 @@
 from typing import Union, List, Dict, Any
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 import yfinance as yf
 from ddgs import DDGS
@@ -6,8 +8,18 @@ from datetime import datetime
 
 from app.core.config import settings
 from app.core.logging_config import get_logger
+from app.services.cache_service import (
+    get_cached_stock_data,
+    set_cached_stock_data,
+    get_cached_news,
+    set_cached_news
+)
+from app.models.external_schemas import YahooFinanceInfo, YahooFinanceFastInfo
 
 logger = get_logger(__name__)
+
+# Thread pool for async operations
+executor = ThreadPoolExecutor(max_workers=4)
 
 
 class DataService:
@@ -16,7 +28,7 @@ class DataService:
     @staticmethod
     def get_stock_data(ticker: str) -> Dict[str, Any]:
         """
-        Fetch comprehensive stock data from Yahoo Finance.
+        Fetch comprehensive stock data from Yahoo Finance with caching.
 
         Args:
             ticker: Stock ticker symbol
@@ -24,7 +36,13 @@ class DataService:
         Returns:
             Dictionary with price, change, and context data
         """
-        logger.info(f"[DataService] Fetching stock data for ticker: {ticker}")
+        # Check cache first
+        cached = get_cached_stock_data(ticker)
+        if cached:
+            logger.info(f"[DataService] Using cached data for {ticker}")
+            return cached
+
+        logger.info(f"[DataService] Fetching fresh stock data for ticker: {ticker}")
         try:
             stock = yf.Ticker(ticker)
             info = stock.info
@@ -134,7 +152,7 @@ class DataService:
             recommendation = info.get('recommendationKey', 'N/A')
             logger.info(f"[DataService] Recommendation: {recommendation}")
 
-            return {
+            result = {
                 "company_name": company_name,
                 "current_price": current_price,
                 "price_change": price_change,
@@ -160,9 +178,41 @@ class DataService:
                 "recommendation": recommendation
             }
 
+            # Cache the result
+            set_cached_stock_data(ticker, result)
+            return result
+
+        except (KeyError, AttributeError, TypeError, ValueError) as e:
+            logger.error(f"[DataService] Data parsing error for {ticker}: {e}")
+            logger.error(f"[DataService] This usually means the ticker '{ticker}' is invalid or data structure changed")
+            return {
+                "company_name": ticker,
+                "current_price": "Unknown",
+                "price_change": "N/A",
+                "price_change_pct": "N/A",
+                "prev_close": "N/A",
+                "week_52_high": "N/A",
+                "week_52_low": "N/A",
+                "pct_from_high": "N/A",
+                "market_cap": "N/A",
+                "pe_ratio": "N/A",
+                "forward_pe": "N/A",
+                "volume": "N/A",
+                "volume_vs_avg": "N/A",
+                "beta": "N/A",
+                "short_percent": "N/A",
+                "debt_to_equity": "N/A",
+                "profit_margin": "N/A",
+                "revenue_growth": "N/A",
+                "earnings_growth": "N/A",
+                "current_ratio": "N/A",
+                "target_price": "N/A",
+                "target_upside": "N/A",
+                "recommendation": "N/A"
+            }
         except Exception as e:
-            logger.error(f"[DataService] Stock data fetch FAILED for {ticker}: {e}")
-            logger.error(f"[DataService] This usually means the ticker '{ticker}' is invalid or not found on Yahoo Finance")
+            logger.error(f"[DataService] Unexpected error fetching {ticker}: {e}")
+            logger.exception("[DataService] Full traceback:")
             return {
                 "company_name": ticker,
                 "current_price": "Unknown",
@@ -192,7 +242,7 @@ class DataService:
     @staticmethod
     def get_news_with_sources(ticker: str) -> List[Dict[str, str]]:
         """
-        Fetch recent news headlines with sources and URLs from DuckDuckGo.
+        Fetch recent news headlines with sources and URLs from DuckDuckGo with caching.
 
         Args:
             ticker: Stock ticker symbol
@@ -200,9 +250,15 @@ class DataService:
         Returns:
             List of news dictionaries with title, source, and url
         """
+        # Check cache first
+        cached = get_cached_news(ticker)
+        if cached:
+            logger.info(f"[DataService] Using cached news for {ticker}")
+            return cached
+
         news_list = []
         try:
-            with DDGS() as ddgs:
+            with DDGS(timeout=settings.EXTERNAL_API_TIMEOUT) as ddgs:
                 query = f"{ticker} stock news risks concerns {datetime.now().year}"
                 results = ddgs.news(query, max_results=settings.NEWS_MAX_RESULTS)
                 for r in results:
@@ -212,8 +268,11 @@ class DataService:
                         "url": r.get('url', ''),
                         "date": r.get('date', '')
                     })
+
+            # Cache the result
+            set_cached_news(ticker, news_list)
         except Exception as e:
-            print(f"[DataService] News fetch warning: {e}")
+            logger.warning(f"[DataService] News fetch warning: {e}")
             news_list.append({
                 "title": "No recent news found",
                 "source": "N/A",
@@ -224,9 +283,9 @@ class DataService:
         return news_list
 
     @classmethod
-    def fetch_stock_data(cls, ticker: str) -> dict:
+    async def fetch_stock_data(cls, ticker: str) -> dict:
         """
-        Fetch all stock data (price metrics and news).
+        Fetch all stock data (price metrics and news) in parallel.
 
         Args:
             ticker: Stock ticker symbol
@@ -234,10 +293,14 @@ class DataService:
         Returns:
             Dictionary with comprehensive stock data and news
         """
-        print(f"[DataService] Fetching comprehensive data for {ticker}...")
+        logger.info(f"[DataService] Fetching comprehensive data for {ticker}...")
 
-        stock_data = cls.get_stock_data(ticker)
-        news_data = cls.get_news_with_sources(ticker)
+        # Fetch stock data and news in parallel using thread pool
+        loop = asyncio.get_event_loop()
+        stock_data, news_data = await asyncio.gather(
+            loop.run_in_executor(executor, cls.get_stock_data, ticker),
+            loop.run_in_executor(executor, cls.get_news_with_sources, ticker)
+        )
 
         # Format news for prompt
         news_formatted = []

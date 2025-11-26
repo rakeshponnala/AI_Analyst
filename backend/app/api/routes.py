@@ -1,10 +1,12 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+import re
 
 from app.core.config import settings
 from app.core.logging_config import get_logger
 from app.models.schemas import AnalysisResponse, HealthResponse, StockMetrics, NewsItem
 from app.services.analysis_service import AnalysisService
 from app.services.ticker_service import TickerService
+from app.middleware.rate_limiter import limiter
 
 logger = get_logger(__name__)
 
@@ -14,14 +16,14 @@ router = APIRouter()
 try:
     analysis_service = AnalysisService()
     ticker_service = TickerService()
-    print("[API] Analysis service loaded successfully")
+    logger.info("[API] Analysis service loaded successfully")
 except Exception as e:
-    print(f"[API] Failed to initialize analysis service: {e}")
+    logger.error(f"[API] Failed to initialize analysis service: {e}")
     analysis_service = None
     ticker_service = TickerService()
 
 
-@router.get("/", response_model=HealthResponse, tags=["Health"])
+@router.get("/v1/", response_model=HealthResponse, tags=["Health"])
 async def health_check():
     """
     Health check endpoint.
@@ -36,15 +38,17 @@ async def health_check():
 
 
 @router.get(
-    "/api/analyze/{query}",
+    "/v1/api/analyze/{query}",
     response_model=AnalysisResponse,
     tags=["Analysis"]
 )
-async def analyze_stock(query: str):
+@limiter.limit("10/minute")
+async def analyze_stock(request: Request, query: str):
     """
     Analyze a stock for investment risks.
 
     Args:
+        request: FastAPI request object (for rate limiting)
         query: Stock ticker symbol OR company name (e.g., NVDA, TSLA, AAPL, "google", "apple")
 
     Returns:
@@ -59,10 +63,18 @@ async def analyze_stock(query: str):
     # Resolve company name to ticker if needed
     ticker = ticker_service.resolve_ticker(query)
 
+    # Validate ticker format
     if not ticker or len(ticker) > 10:
         raise HTTPException(
             status_code=400,
             detail="Invalid ticker symbol or company name"
+        )
+
+    # Sanitize ticker - only allow alphanumeric, hyphens, and dots
+    if not re.match(r'^[A-Z0-9.\-]+$', ticker):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid ticker format. Only letters, numbers, dots and hyphens allowed."
         )
 
     logger.info(f"[API] ========== NEW ANALYSIS REQUEST ==========")
@@ -70,7 +82,7 @@ async def analyze_stock(query: str):
     logger.info(f"[API] Resolved ticker: '{ticker}'")
 
     try:
-        result = analysis_service.analyze(ticker)
+        result = await analysis_service.analyze(ticker)
         logger.info(f"[API] Analysis completed successfully for {ticker}")
         logger.info(f"[API] Price returned: {result['metrics']['price']}")
 

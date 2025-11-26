@@ -95,9 +95,30 @@ HedgeAI/
 
 ### Prerequisites
 
-- Python 3.9+
-- Node.js 18+
-- Anthropic API key → [Get one here](https://console.anthropic.com/)
+- **Python 3.11+**
+- **Node.js 20+**
+- **Anthropic API key** → [Get one here](https://console.anthropic.com/)
+- **Docker** (optional) → [Get Docker](https://www.docker.com/get-started)
+
+### Quick Start with Docker (Recommended)
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/HedgeAI.git
+cd HedgeAI
+
+# Set up environment variables
+cp backend/.env.example backend/.env
+# Edit backend/.env and add your ANTHROPIC_API_KEY
+
+# Build and run with Docker Compose
+docker-compose up --build
+
+# Access the app
+# Frontend: http://localhost:3000
+# Backend API: http://localhost:8000
+# API Docs: http://localhost:8000/docs
+```
 
 ### Backend Setup
 
@@ -118,11 +139,25 @@ cp .env.example .env  # Then edit with your API key
 
 **Environment Variables** (`backend/.env`):
 ```env
+# Required
 ANTHROPIC_API_KEY=your_api_key_here
+
+# AI Configuration
 AI_MODEL_NAME=claude-sonnet-4-5-20250929
-AI_MAX_TOKENS=400
-AI_TEMPERATURE=0.2
-NEWS_MAX_RESULTS=3
+AI_MAX_TOKENS=1500
+AI_TEMPERATURE=0.3
+NEWS_MAX_RESULTS=5
+
+# API Timeouts (seconds)
+EXTERNAL_API_TIMEOUT=30
+ANTHROPIC_API_TIMEOUT=60
+
+# Cache TTL (seconds)
+STOCK_DATA_CACHE_TTL=300
+NEWS_CACHE_TTL=900
+
+# CORS (comma-separated)
+CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 ```
 
 **Start the server:**
@@ -141,8 +176,17 @@ cd frontend
 # Install dependencies
 npm install
 
+# Configure environment (optional)
+cp .env.local.example .env.local
+# Edit if you need to change the backend URL
+
 # Start development server
 npm run dev
+```
+
+**Environment Variables** (`frontend/.env.local`):
+```env
+NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
 ```
 
 Dashboard available at `http://localhost:3000`
@@ -155,12 +199,22 @@ Once the backend is running:
 - **Swagger UI**: http://127.0.0.1:8000/docs
 - **ReDoc**: http://127.0.0.1:8000/redoc
 
-### Endpoints
+### API Reference
 
-#### Health Check
+**Full API documentation:** [`backend/API.md`](backend/API.md)
+
+#### Rate Limiting
+
+- **10 requests per minute** per IP address
+- Exceeding limit returns `429 Too Many Requests`
+
+#### Endpoints
+
+##### Health Check
 ```http
-GET /
+GET /v1/
 ```
+**Response:**
 ```json
 {
   "status": "active",
@@ -169,23 +223,98 @@ GET /
 }
 ```
 
-#### Analyze Stock
+##### Analyze Stock
 ```http
-GET /api/analyze/{ticker}
+GET /v1/api/analyze/{query}
 ```
 
 **Parameters:**
 | Name | Type | Description |
 |------|------|-------------|
-| `ticker` | string | Stock symbol (e.g., NVDA, TSLA) |
+| `query` | string | Stock ticker (e.g., NVDA) or company name (e.g., "google") |
 
-**Response:**
+**Example Response:**
 ```json
 {
   "ticker": "NVDA",
-  "analysis": "RISK ASSESSMENT MEMO - NVDA\n\nPrice: $177.82\n\nMajor Risks:\n1. Geopolitical exposure through Taiwan semiconductor dependency...\n2. Valuation concerns amid market volatility...\n\nRating: BEARISH"
+  "company_name": "NVIDIA Corporation",
+  "rating": "BEARISH",
+  "metrics": {
+    "price": 135.58,
+    "pe_ratio": 57.34,
+    "beta": 1.73,
+    ...
+  },
+  "news": [...],
+  "analysis": "**RISK ASSESSMENT: NVDA**\n\nNVIDIA trades at $135.58...",
+  "generated_at": "2025-11-26 12:00:00"
 }
 ```
+
+## Testing
+
+### Backend Tests
+
+```bash
+cd backend
+pytest tests/ -v --cov=app
+```
+
+### Code Quality
+
+```bash
+# Format code
+black app/ tests/
+
+# Lint
+flake8 app/ tests/ --max-line-length=100
+
+# Type check
+mypy app/ --ignore-missing-imports
+```
+
+### Pre-commit Hooks
+
+```bash
+# Install
+pip install pre-commit
+pre-commit install
+
+# Run manually
+pre-commit run --all-files
+```
+
+## Development
+
+### Running with Docker
+
+```bash
+# Build and start all services
+docker-compose up --build
+
+# Run in background
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+```
+
+### CI/CD
+
+GitHub Actions runs automatically on:
+- Push to `main` or `develop`
+- Pull requests
+
+Checks include:
+- Backend tests with pytest
+- Frontend build verification
+- Code linting (Black, flake8, ESLint)
+- Docker build tests
+
+See [`.github/workflows/ci.yml`](.github/workflows/ci.yml) for details.
 
 ## Configuration
 
@@ -199,7 +328,9 @@ GET /api/analyze/{ticker}
 
 ## Documentation
 
-- [Architecture Guide](docs/ARCHITECTURE.md) - Technical deep-dive
+- **[Architecture Guide](docs/ARCHITECTURE.md)** - Technical deep-dive into system design
+- **[API Reference](backend/API.md)** - Complete API documentation
+- **[Contributing Guide](CONTRIBUTING.md)** - How to contribute to the project
 
 ## Roadmap
 
@@ -227,7 +358,11 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Contributing
 
-Contributions are welcome! Please read our contributing guidelines and submit a PR.
+Contributions are welcome! Please read our **[Contributing Guide](CONTRIBUTING.md)** for:
+- Development setup instructions
+- Code style guidelines
+- Testing requirements
+- Pull request process
 
 ---
 

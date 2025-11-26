@@ -1,7 +1,29 @@
-fastapi
-uvicorn
-yfinance
-ddgs
-anthropic
-python-dotenv
-pydantic
+# Core Framework
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.5
+pydantic-settings==2.7.1
+python-dotenv==1.0.1
+
+# Data Sources
+yfinance==0.2.51
+ddgs==9.8.0
+
+# AI Integration
+anthropic==0.42.0
+
+# Middleware & Utilities
+slowapi==0.1.9
+cachetools==5.5.0
+
+# Testing (Development)
+pytest==8.3.4
+pytest-asyncio==0.24.0
+pytest-mock==3.14.0
+httpx==0.28.1
+
+# Code Quality (Development)
+black==24.10.0
+flake8==7.1.1
+isort==5.13.2
+pre-commit==4.0.1

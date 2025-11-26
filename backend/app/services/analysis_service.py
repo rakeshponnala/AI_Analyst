@@ -110,13 +110,16 @@ Provide your analysis in this EXACT format:
                 "Missing API Key. Please add ANTHROPIC_API_KEY to your .env file."
             )
 
-        self.client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+        self.client = Anthropic(
+            api_key=settings.ANTHROPIC_API_KEY,
+            timeout=settings.ANTHROPIC_API_TIMEOUT
+        )
         self.model = settings.AI_MODEL_NAME
         self.data_service = DataService()
 
         logger.info(f"[AnalysisService] Initialized with model: {self.model}")
 
-    def analyze(self, ticker: str) -> dict:
+    async def analyze(self, ticker: str) -> dict:
         """
         Perform AI-powered risk analysis on a stock.
 
@@ -126,15 +129,16 @@ Provide your analysis in this EXACT format:
         Returns:
             Dictionary with structured analysis data
         """
-        # Fetch real-time data
-        data = self.data_service.fetch_stock_data(ticker)
+        # Fetch real-time data (now async)
+        data = await self.data_service.fetch_stock_data(ticker)
 
         # Determine price direction
         try:
             price_change = float(data["price_change"])
             price_change_direction = "+" if price_change >= 0 else "-"
             abs_price_change = abs(price_change)
-        except:
+        except (ValueError, TypeError, KeyError) as e:
+            logger.warning(f"[AnalysisService] Could not parse price change: {e}")
             price_change_direction = ""
             abs_price_change = data["price_change"]
 

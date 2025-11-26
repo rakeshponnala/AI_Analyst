@@ -8,11 +8,69 @@ import {
   Landmark, Scale, Wallet, TrendingUp as Growth, Users
 } from 'lucide-react';
 
+// Configuration
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+
+// Metric Thresholds for Color Coding
+const THRESHOLDS = {
+  PE_RATIO: { EXTREME: 50, HIGH: 30, FAIR: 20, MODERATE: 15 },
+  BETA: { VERY_HIGH: 1.8, HIGH: 1.2, MARKET_LIKE_MIN: 0.8 },
+  SHORT_PERCENT: { VERY_HIGH: 20, ELEVATED: 10, MODERATE: 5 },
+  DEBT_TO_EQUITY: { EXTREME: 200, HIGH: 100, MODERATE: 50, LOW: 30 },
+  CURRENT_RATIO: { RISK: 1, TIGHT: 1.2, ADEQUATE: 1.5, GOOD: 2 },
+  PROFIT_MARGIN: { THIN: 5, MODERATE: 10, HEALTHY: 20 },
+  GROWTH: { NEGATIVE: 0, MODEST: 10, SOLID: 25 },
+  VOLUME_VS_AVG: { UNUSUAL: 200, HIGH: 120, NORMAL_MAX: 80, LOW: 50 },
+  PCT_FROM_HIGH: { NEAR: -5, CLOSE: -10, MODERATE: -20, DISCOUNT: -40 },
+  TARGET_UPSIDE: { BEARISH: -15, LIMITED: 0, MODEST: 10, POSITIVE: 20, GOOD: 30 },
+} as const;
+
+// TypeScript Interfaces
+interface StockMetrics {
+  price: number | string;
+  price_change: number | string;
+  price_change_pct: number | string;
+  prev_close: number | string;
+  week_52_high: number | string;
+  week_52_low: number | string;
+  pct_from_high: number | string;
+  market_cap: string;
+  pe_ratio: number | string;
+  forward_pe: number | string;
+  volume_vs_avg: number | string;
+  beta: number | string;
+  short_percent: number | string;
+  debt_to_equity: number | string;
+  current_ratio: number | string;
+  profit_margin: number | string;
+  revenue_growth: number | string;
+  earnings_growth: number | string;
+  target_price: number | string;
+  target_upside: number | string;
+  recommendation: string;
+}
+
+interface NewsItem {
+  title: string;
+  source: string;
+  url?: string;
+}
+
+interface AnalysisData {
+  ticker: string;
+  company_name: string;
+  rating: 'BEARISH' | 'NEUTRAL';
+  metrics: StockMetrics;
+  news: NewsItem[];
+  analysis: string;
+  generated_at: string;
+}
+
 export default function Dashboard() {
-  const [ticker, setTicker] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState(null);
-  const [error, setError] = useState('');
+  const [ticker, setTicker] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(false);
+  const [data, setData] = useState<AnalysisData | null>(null);
+  const [error, setError] = useState<string>('');
 
   const analyzeStock = async () => {
     if (!ticker) return;
@@ -21,7 +79,7 @@ export default function Dashboard() {
     setData(null);
 
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/analyze/${ticker}`);
+      const response = await fetch(`${API_URL}/v1/api/analyze/${ticker}`);
       if (!response.ok) throw new Error("Failed to fetch data");
 
       const result = await response.json();
@@ -34,23 +92,23 @@ export default function Dashboard() {
   };
 
   // Format price change display
-  const formatPriceChange = (change, pct) => {
+  const formatPriceChange = (change: string | number, pct: string | number) => {
     if (change === 'N/A') return { text: 'N/A', isPositive: true };
-    const isPositive = parseFloat(change) >= 0;
+    const isPositive = parseFloat(change.toString()) >= 0;
     const sign = isPositive ? '+' : '';
     return {
-      text: `${sign}$${Math.abs(change).toFixed(2)} (${sign}${pct}%)`,
+      text: `${sign}$${Math.abs(parseFloat(change.toString())).toFixed(2)} (${sign}${pct}%)`,
       isPositive
     };
   };
 
   // Smart color coding function
-  const getMetricColor = (metric, value) => {
+  const getMetricColor = (metric: string, value: string | number) => {
     if (value === 'N/A' || value === undefined || value === null || value === 'Unknown') {
       return 'text-slate-400';
     }
 
-    const num = parseFloat(value);
+    const num = parseFloat(value.toString());
     if (isNaN(num)) return 'text-slate-400';
 
     const rules = {
@@ -128,16 +186,23 @@ export default function Dashboard() {
         if (num < 10) return 'text-yellow-400';
         return 'text-emerald-400';
       },
-    };
+    } as Record<string, () => string>;
 
     return rules[metric] ? rules[metric]() : 'text-white';
   };
 
   // Generate section-specific insights
-  const generateSectionInsights = (metrics) => {
+  const generateSectionInsights = (metrics: StockMetrics | null) => {
     if (!metrics) return {};
 
-    const sections = {
+    type InsightItem = {
+      type: string;
+      icon: any;
+      title: string;
+      text: string;
+    };
+
+    const sections: Record<string, InsightItem[]> = {
       trading: [],
       valuation: [],
       debt: [],
@@ -146,7 +211,7 @@ export default function Dashboard() {
     };
 
     // === TRADING INSIGHTS ===
-    const pctFromHigh = parseFloat(metrics.pct_from_high);
+    const pctFromHigh = parseFloat(metrics.pct_from_high.toString());
     if (!isNaN(pctFromHigh)) {
       if (pctFromHigh > -5) {
         sections.trading.push({
@@ -186,7 +251,7 @@ export default function Dashboard() {
       }
     }
 
-    const volumeVsAvg = parseFloat(metrics.volume_vs_avg);
+    const volumeVsAvg = parseFloat(metrics.volume_vs_avg.toString());
     if (!isNaN(volumeVsAvg)) {
       if (volumeVsAvg > 200) {
         sections.trading.push({
@@ -226,7 +291,7 @@ export default function Dashboard() {
       }
     }
 
-    const beta = parseFloat(metrics.beta);
+    const beta = parseFloat(metrics.beta.toString());
     if (!isNaN(beta)) {
       if (beta > 1.8) {
         sections.trading.push({
@@ -260,8 +325,8 @@ export default function Dashboard() {
     }
 
     // === VALUATION INSIGHTS ===
-    const pe = parseFloat(metrics.pe_ratio);
-    const forwardPe = parseFloat(metrics.forward_pe);
+    const pe = parseFloat(metrics.pe_ratio.toString());
+    const forwardPe = parseFloat(metrics.forward_pe.toString());
 
     if (!isNaN(pe)) {
       if (pe < 0) {
@@ -335,9 +400,9 @@ export default function Dashboard() {
     }
 
     // === DEBT & LIQUIDITY INSIGHTS ===
-    const debtEquity = parseFloat(metrics.debt_to_equity);
-    const currentRatio = parseFloat(metrics.current_ratio);
-    const shortPct = parseFloat(metrics.short_percent);
+    const debtEquity = parseFloat(metrics.debt_to_equity.toString());
+    const currentRatio = parseFloat(metrics.current_ratio.toString());
+    const shortPct = parseFloat(metrics.short_percent.toString());
 
     if (!isNaN(debtEquity)) {
       if (debtEquity > 200) {
@@ -450,9 +515,9 @@ export default function Dashboard() {
     }
 
     // === PROFITABILITY INSIGHTS ===
-    const profitMargin = parseFloat(metrics.profit_margin);
-    const revenueGrowth = parseFloat(metrics.revenue_growth);
-    const earningsGrowth = parseFloat(metrics.earnings_growth);
+    const profitMargin = parseFloat(metrics.profit_margin.toString());
+    const revenueGrowth = parseFloat(metrics.revenue_growth.toString());
+    const earningsGrowth = parseFloat(metrics.earnings_growth.toString());
 
     if (!isNaN(profitMargin)) {
       if (profitMargin < 0) {
@@ -572,7 +637,7 @@ export default function Dashboard() {
     }
 
     // === ANALYST SENTIMENT INSIGHTS ===
-    const targetUpside = parseFloat(metrics.target_upside);
+    const targetUpside = parseFloat(metrics.target_upside.toString());
     const recommendation = metrics.recommendation;
 
     if (!isNaN(targetUpside)) {
@@ -670,7 +735,7 @@ export default function Dashboard() {
   }, [data]);
 
   // Metric card component with smart coloring
-  const MetricCard = ({ icon: Icon, label, value, subValue, tooltip, metric }) => {
+  const MetricCard = ({ icon: Icon, label, value, subValue, tooltip, metric }: any) => {
     const cleanValue = String(value || '').replace(/[$%]/g, '');
     const colorClass = getMetricColor(metric, cleanValue);
 
@@ -692,7 +757,7 @@ export default function Dashboard() {
   };
 
   // Section insight card component
-  const SectionInsightCard = ({ insight }) => {
+  const SectionInsightCard = ({ insight }: any) => {
     const bgColors = {
       danger: 'bg-red-500/10 border-red-500/30',
       warning: 'bg-yellow-500/10 border-yellow-500/30',

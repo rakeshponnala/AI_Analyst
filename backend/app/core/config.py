@@ -21,10 +21,18 @@ class Settings:
     API_DESCRIPTION: str = "AI-powered contrarian stock risk analysis"
 
     # CORS Configuration
-    CORS_ORIGINS: list = ["*"]  # Restrict in production
+    CORS_ORIGINS: list = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
 
     # News Configuration
     NEWS_MAX_RESULTS: int = int(os.getenv("NEWS_MAX_RESULTS", "5"))
+
+    # API Timeout Configuration (in seconds)
+    EXTERNAL_API_TIMEOUT: int = int(os.getenv("EXTERNAL_API_TIMEOUT", "30"))
+    ANTHROPIC_API_TIMEOUT: int = int(os.getenv("ANTHROPIC_API_TIMEOUT", "60"))
+
+    # Cache Configuration (TTL in seconds)
+    STOCK_DATA_CACHE_TTL: int = int(os.getenv("STOCK_DATA_CACHE_TTL", "300"))
+    NEWS_CACHE_TTL: int = int(os.getenv("NEWS_CACHE_TTL", "900"))
 
 
 settings = Settings()

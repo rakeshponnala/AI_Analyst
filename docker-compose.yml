@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: hedgeai-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - AI_MODEL_NAME=${AI_MODEL_NAME:-claude-sonnet-4-5-20250929}
+      - AI_MAX_TOKENS=${AI_MAX_TOKENS:-1500}
+      - AI_TEMPERATURE=${AI_TEMPERATURE:-0.3}
+      - NEWS_MAX_RESULTS=${NEWS_MAX_RESULTS:-5}
+      - EXTERNAL_API_TIMEOUT=${EXTERNAL_API_TIMEOUT:-30}
+      - ANTHROPIC_API_TIMEOUT=${ANTHROPIC_API_TIMEOUT:-60}
+      - STOCK_DATA_CACHE_TTL=${STOCK_DATA_CACHE_TTL:-300}
+      - NEWS_CACHE_TTL=${NEWS_CACHE_TTL:-900}
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+    volumes:
+      - ./backend/logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/v1/', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: hedgeai-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+networks:
+  default:
+    name: hedgeai-network
